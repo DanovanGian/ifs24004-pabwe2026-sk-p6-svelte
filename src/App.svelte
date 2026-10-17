@@ -45,6 +45,6 @@
       <Page params={route.params} />
     </Layout>
   {:else}
-    <Page params={route.params} />
+    <Page />
   {/if}
 {/if}
