@@ -1,215 +1,112 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/svelte";
-import userEvent from "@testing-library/user-event";
+import { screen, fireEvent, waitFor } from "@testing-library/svelte";
+vi.mock("../states/linkTreesStore.js", async (orig) => ({
+  ...(await orig()), fetchLinkTrees: vi.fn(), removeLinkTree: vi.fn(), removeAllLinkTrees: vi.fn(),
+}));
+vi.mock("../../../helpers/toolsHelper.js", async (orig) => ({
+  ...(await orig()), showConfirmDialog: vi.fn(), showErrorDialog: vi.fn(), showSuccessDialog: vi.fn(),
+}));
+import { fetchLinkTrees, removeLinkTree, removeAllLinkTrees } from "../states/linkTreesStore.js";
+import { showConfirmDialog, showErrorDialog, showSuccessDialog } from "../../../helpers/toolsHelper.js";
+import { linkTrees } from "../states/linkTreesStore.js";
+import { tick } from "svelte";
 import { renderWithProviders } from "../../../test-utils.js";
 import HomePage from "./HomePage.svelte";
-import {
-  linkTrees,
-  listLoading,
-  fetchLinkTrees,
-  removeLinkTree,
-  removeAllLinkTrees,
-} from "../states/linkTreesStore.js";
-import { me, fetchMe } from "../../users/states/usersStore.js";
-import { navigate } from "../../../router.js";
-import {
-  showSuccessDialog,
-  showErrorDialog,
-  showConfirmDialog,
-} from "../../../helpers/toolsHelper.js";
 
-vi.mock("@toast-ui/editor", () => ({
-  default: class {
-    destroy() {}
-    getMarkdown() {
-      return "";
-    }
-  },
-}));
-vi.mock("../states/linkTreesStore.js", async () => {
-  const { writable } = await import("svelte/store");
-  return {
-    linkTrees: writable([]),
-    listLoading: writable(false),
-    addLoading: writable(false),
-    fetchLinkTrees: vi.fn(),
-    removeLinkTree: vi.fn(),
-    removeAllLinkTrees: vi.fn(),
-    addLinkTree: vi.fn(),
-  };
-});
-vi.mock("../../users/states/usersStore.js", async () => {
-  const { writable } = await import("svelte/store");
-  return { me: writable(null), fetchMe: vi.fn() };
-});
-vi.mock("../../../router.js", () => ({ navigate: vi.fn() }));
-vi.mock("../../../helpers/toolsHelper.js", () => ({
-  showSuccessDialog: vi.fn(),
-  showErrorDialog: vi.fn(),
-  showConfirmDialog: vi.fn(),
-}));
-
-const trees = [
-  { id: 1, title: "Alpha", type: "public", user_id: 10, cover: "http://x/c.png" },
-  { id: 2, title: "Beta", type: "private", user_id: 11, cover: null },
-  { id: 3, title: "Gamma", type: "unlisted", user_id: 10, cover: null },
+const data = [
+  { id: 1, user_id: 1, title: "Alpha", description: "d", type: "public", cover: "http://x/c.png", created_at: "2026-01-01" },
+  { id: 2, user_id: 2, title: "Beta", description: "d", type: "private" },
+  { id: 3, user_id: 1, title: "Gamma", description: "d", type: "unlisted" },
 ];
+const render = (stores = {}) => renderWithProviders(HomePage, { stores: { profile: { id: 1 }, linkTrees: data, ...stores } });
 
 describe("HomePage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    linkTrees.set([]);
-    listLoading.set(false);
-    me.set(null);
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  it("memuat data saat halaman dibuka", () => {
-    renderWithProviders(HomePage);
-
+  it("memuat data, statistik, dan daftar", () => {
+    render();
     expect(fetchLinkTrees).toHaveBeenCalled();
-    expect(fetchMe).toHaveBeenCalled();
+    expect(screen.getByText("Alpha")).toHaveAttribute("href", "/link-trees/1");
+    expect(screen.getByAltText("Alpha")).toBeInTheDocument();
+    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByLabelText("Hapus Alpha")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Hapus Beta")).toBeNull();
   });
-
-  it("menampilkan teks memuat saat loading", () => {
-    listLoading.set(true);
-    renderWithProviders(HomePage);
-
-    expect(screen.getByText("Memuat link tree...")).toBeInTheDocument();
-  });
-
-  it("menampilkan pesan kosong bila tidak ada data", () => {
-    renderWithProviders(HomePage);
-
+  it("status memuat & kosong", () => {
+    const a = render({ loading: true, linkTrees: [] });
+    expect(screen.getByText("Memuat...")).toBeInTheDocument();
+    a.unmount();
+    render({ linkTrees: [] });
     expect(screen.getByText("Tidak ada link tree.")).toBeInTheDocument();
   });
-
-  it("menampilkan daftar, sampul, dan statistik", () => {
-    linkTrees.set(trees);
-    renderWithProviders(HomePage);
-
-    expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
-    expect(screen.getByAltText("Sampul Alpha")).toBeInTheDocument();
-    expect(screen.queryByAltText("Sampul Beta")).not.toBeInTheDocument();
-    expect(screen.getByTestId("stat-Total")).toHaveTextContent("3");
-    expect(screen.getByTestId("stat-Public")).toHaveTextContent("1");
-    expect(screen.getByTestId("stat-Unlisted")).toHaveTextContent("1");
-    expect(screen.getByTestId("stat-Private")).toHaveTextContent("1");
+  it("pencarian & filter milik saya", async () => {
+    render();
+    await fireEvent.input(screen.getByPlaceholderText("Cari judul..."), { target: { value: "bet" } });
+    expect(screen.queryByText("Alpha")).toBeNull();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    await fireEvent.input(screen.getByPlaceholderText("Cari judul..."), { target: { value: "" } });
+    await fireEvent.click(screen.getByRole("checkbox"));
+    expect(screen.queryByText("Beta")).toBeNull();
+    expect(screen.getByText("Gamma")).toBeInTheDocument();
   });
-
-  it("pencarian menyaring berdasarkan judul", async () => {
-    linkTrees.set(trees);
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().type(screen.getByLabelText("Cari"), "bet");
-
-    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
-  });
-
-  it("filter milik saya hanya menampilkan milik pengguna", async () => {
-    linkTrees.set(trees);
-    me.set({ id: 10 });
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByLabelText("Milik saya"));
-
-    expect(screen.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Gamma" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Beta" })).not.toBeInTheDocument();
-  });
-
-  it("filter milik saya tanpa data pengguna menampilkan daftar kosong", async () => {
-    linkTrees.set(trees);
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByLabelText("Milik saya"));
-
-    expect(screen.getByText("Tidak ada link tree.")).toBeInTheDocument();
-  });
-
-  it("klik judul membuka halaman detail", async () => {
-    linkTrees.set(trees);
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Alpha" }));
-
-    expect(navigate).toHaveBeenCalledWith("/link-trees/1");
-  });
-
-  it("hapus dibatalkan tidak memanggil API", async () => {
-    linkTrees.set(trees);
-    showConfirmDialog.mockResolvedValue(false);
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Hapus Alpha" }));
-
+  it("hapus satu: batal, sukses, gagal", async () => {
+    render();
+    showConfirmDialog.mockResolvedValueOnce(false);
+    await fireEvent.click(screen.getByLabelText("Hapus Alpha"));
     await waitFor(() => expect(showConfirmDialog).toHaveBeenCalled());
     expect(removeLinkTree).not.toHaveBeenCalled();
+
+    showConfirmDialog.mockResolvedValueOnce(true);
+    removeLinkTree.mockResolvedValueOnce({ ok: true });
+    await fireEvent.click(screen.getByLabelText("Hapus Alpha"));
+    await waitFor(() => expect(showSuccessDialog).toHaveBeenCalledWith("Link tree dihapus"));
+
+    showConfirmDialog.mockResolvedValueOnce(true);
+    removeLinkTree.mockResolvedValueOnce({ ok: false, message: "err" });
+    await fireEvent.click(screen.getByLabelText("Hapus Alpha"));
+    await waitFor(() => expect(showErrorDialog).toHaveBeenCalledWith("err"));
   });
-
-  it("hapus sukses menampilkan dialog sukses", async () => {
-    linkTrees.set(trees);
-    showConfirmDialog.mockResolvedValue(true);
-    removeLinkTree.mockResolvedValue({ status: "success" });
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Hapus Alpha" }));
-
-    await waitFor(() => expect(removeLinkTree).toHaveBeenCalledWith(1));
-    await waitFor(() => expect(showSuccessDialog).toHaveBeenCalled());
-  });
-
-  it("hapus gagal menampilkan dialog error", async () => {
-    linkTrees.set(trees);
-    showConfirmDialog.mockResolvedValue(true);
-    removeLinkTree.mockResolvedValue({ status: "fail", message: "Gagal" });
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Hapus Alpha" }));
-
-    await waitFor(() => expect(showErrorDialog).toHaveBeenCalledWith("Gagal"));
-  });
-
-  it("hapus semua dibatalkan tidak memanggil API", async () => {
-    showConfirmDialog.mockResolvedValue(false);
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Hapus Semua" }));
-
+  it("hapus semua: batal, sukses, gagal", async () => {
+    render();
+    showConfirmDialog.mockResolvedValueOnce(false);
+    await fireEvent.click(screen.getByText("Hapus Semua"));
     await waitFor(() => expect(showConfirmDialog).toHaveBeenCalled());
     expect(removeAllLinkTrees).not.toHaveBeenCalled();
+
+    showConfirmDialog.mockResolvedValueOnce(true);
+    removeAllLinkTrees.mockResolvedValueOnce({ ok: true });
+    await fireEvent.click(screen.getByText("Hapus Semua"));
+    await waitFor(() => expect(showSuccessDialog).toHaveBeenCalledWith("Semua link tree dihapus"));
+
+    showConfirmDialog.mockResolvedValueOnce(true);
+    removeAllLinkTrees.mockResolvedValueOnce({ ok: false, message: "err2" });
+    await fireEvent.click(screen.getByText("Hapus Semua"));
+    await waitFor(() => expect(showErrorDialog).toHaveBeenCalledWith("err2"));
   });
-
-  it("hapus semua sukses menampilkan dialog sukses", async () => {
-    showConfirmDialog.mockResolvedValue(true);
-    removeAllLinkTrees.mockResolvedValue({ status: "success" });
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Hapus Semua" }));
-
-    await waitFor(() => expect(removeAllLinkTrees).toHaveBeenCalled());
-    await waitFor(() => expect(showSuccessDialog).toHaveBeenCalled());
+  it("membuka dan menutup modal tambah", async () => {
+    render();
+    await fireEvent.click(screen.getByText("Tambah"));
+    expect(screen.getByText("Tambah Link Tree")).toBeInTheDocument();
+    await fireEvent.click(screen.getByText("Batal"));
+    expect(screen.queryByText("Tambah Link Tree")).toBeNull();
   });
-
-  it("hapus semua gagal menampilkan dialog error", async () => {
-    showConfirmDialog.mockResolvedValue(true);
-    removeAllLinkTrees.mockResolvedValue({ status: "fail", message: "Gagal" });
-    renderWithProviders(HomePage);
-
-    await userEvent.setup().click(screen.getByRole("button", { name: "Hapus Semua" }));
-
-    await waitFor(() => expect(showErrorDialog).toHaveBeenCalledWith("Gagal"));
+  it("tanpa profil: tidak ada item milik sendiri", async () => {
+    render({ profile: null });
+    expect(screen.queryByLabelText("Hapus Alpha")).toBeNull();
+    await fireEvent.click(screen.getByRole("checkbox"));
+    expect(screen.getByText("Tidak ada link tree.")).toBeInTheDocument();
   });
-
-  it("modal tambah bisa dibuka dan ditutup", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(HomePage);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Tambah Link Tree" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Batal" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  it("memperbarui tampilan saat store berubah", async () => {
+    render();
+    linkTrees.set(data.map((d) => ({ ...d, title: d.title + "!" })));
+    await tick();
+    expect(screen.getByText("Alpha!")).toBeInTheDocument();
+    linkTrees.set(data.map((d) => ({ ...d, description: "baru" })));
+    await tick();
+    expect(screen.getAllByText("baru")).toHaveLength(3);
+  });
+  it("data tanpa judul/tipe/deskripsi tetap dirender", () => {
+    render({ linkTrees: [{ id: 4, user_id: 1 }] });
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 });

@@ -1,8 +1,6 @@
 import { writable } from "svelte/store";
 
-export function useInput(initialValue = "") {
-  const value = writable(initialValue);
-  const reset = () => value.set(initialValue);
-
-  return { value, reset };
+export function useInput(initial = "") {
+  const value = writable(initial);
+  return { value, reset: () => value.set(initial) };
 }

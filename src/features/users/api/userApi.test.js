@@ -1,50 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  getUsersRequest,
-  getMeRequest,
-  updateMeRequest,
-  updatePhotoRequest,
-  changePasswordRequest,
-} from "./userApi.js";
-import { apiRequest } from "../../../helpers/apiHelper.js";
+import { it, expect, vi } from "vitest";
+vi.mock("../../../helpers/apiHelper.js", () => ({ apiFetch: vi.fn().mockResolvedValue({ ok: true }) }));
+import { apiFetch } from "../../../helpers/apiHelper.js";
+import { getUsersApi, getMeApi, updateMeApi, updatePhotoApi, updatePasswordApi } from "./userApi.js";
 
-vi.mock("../../../helpers/apiHelper.js", () => ({ apiRequest: vi.fn() }));
-
-describe("userApi", () => {
-  beforeEach(() => apiRequest.mockReset());
-
-  it("getUsersRequest memanggil GET /users", () => {
-    getUsersRequest();
-    expect(apiRequest).toHaveBeenCalledWith("/users");
-  });
-
-  it("getMeRequest memanggil GET /users/me", () => {
-    getMeRequest();
-    expect(apiRequest).toHaveBeenCalledWith("/users/me");
-  });
-
-  it("updateMeRequest memanggil PUT /users/me", () => {
-    updateMeRequest("Gian", "g@x.id");
-    expect(apiRequest).toHaveBeenCalledWith("/users/me", {
-      method: "PUT",
-      body: { name: "Gian", email: "g@x.id" },
-    });
-  });
-
-  it("updatePhotoRequest mengirim FormData lewat POST /users/photo", () => {
-    const form = new FormData();
-    updatePhotoRequest(form);
-    expect(apiRequest).toHaveBeenCalledWith("/users/photo", {
-      method: "POST",
-      body: form,
-    });
-  });
-
-  it("changePasswordRequest memakai kunci new_password", () => {
-    changePasswordRequest("lama", "baru");
-    expect(apiRequest).toHaveBeenCalledWith("/users/change-password", {
-      method: "PUT",
-      body: { password: "lama", new_password: "baru" },
-    });
-  });
+it("endpoint pengguna", async () => {
+  await getUsersApi();
+  expect(apiFetch).toHaveBeenLastCalledWith("/users");
+  await getMeApi();
+  expect(apiFetch).toHaveBeenLastCalledWith("/users/me");
+  await updateMeApi("n", "e");
+  expect(apiFetch).toHaveBeenLastCalledWith("/users/me", { method: "PUT", body: { name: "n", email: "e" } });
+  await updatePasswordApi("o", "n");
+  expect(apiFetch).toHaveBeenLastCalledWith("/users/me/password", { method: "PUT", body: { password: "o", new_password: "n" } });
+});
+it("updatePhotoApi mengirim FormData", async () => {
+  await updatePhotoApi(new File(["x"], "a.png"));
+  const [path, opt] = apiFetch.mock.calls.at(-1);
+  expect(path).toBe("/users/me/photo");
+  expect(opt.method).toBe("POST");
+  expect(opt.form.get("photo").name).toBe("a.png");
 });

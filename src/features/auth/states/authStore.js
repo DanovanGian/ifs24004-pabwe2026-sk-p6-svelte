@@ -1,39 +1,40 @@
 import { writable, derived } from "svelte/store";
-import {
-  getAccessToken,
-  putAccessToken,
-  removeAccessToken,
-} from "../../../helpers/apiHelper.js";
-import { loginRequest, registerRequest } from "../api/authApi.js";
+import { loginApi, registerApi } from "../api/authApi.js";
+import { getMeApi } from "../../users/api/userApi.js";
+import { putAccessToken, removeAccessToken, getAccessToken } from "../../../helpers/apiHelper.js";
+import { navigate } from "../../../router.js";
 
-export const authToken = writable(getAccessToken());
-export const isAuthenticated = derived(authToken, ($token) => !!$token);
-export const authLoading = writable(false);
+export const profile = writable(null);
+export const isAuthenticated = derived(profile, ($p) => !!$p);
+
+export async function loadProfile() {
+  if (!getAccessToken()) {
+    profile.set(null);
+    return null;
+  }
+  const r = await getMeApi();
+  if (!r.ok) {
+    removeAccessToken();
+    profile.set(null);
+    return null;
+  }
+  profile.set(r.data.user);
+  return r.data.user;
+}
 
 export async function login(email, password) {
-  authLoading.set(true);
-  try {
-    const result = await loginRequest(email, password);
-    if (result.status === "success") {
-      putAccessToken(result.data.token);
-      authToken.set(result.data.token);
-    }
-    return result;
-  } finally {
-    authLoading.set(false);
+  const r = await loginApi(email, password);
+  if (r.ok) {
+    putAccessToken(r.data.token);
+    await loadProfile();
   }
+  return r;
 }
 
-export async function register(name, email, password) {
-  authLoading.set(true);
-  try {
-    return await registerRequest(name, email, password);
-  } finally {
-    authLoading.set(false);
-  }
-}
+export const register = (name, email, password) => registerApi(name, email, password);
 
 export function logout() {
   removeAccessToken();
-  authToken.set(null);
+  profile.set(null);
+  navigate("/auth/login", { replace: true });
 }

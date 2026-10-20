@@ -1,81 +1,43 @@
 <script>
   import { useInput } from "../../../hooks/useInput.js";
-  import { register, authLoading } from "../states/authStore.js";
+  import { register } from "../states/authStore.js";
   import { navigate } from "../../../router.js";
-  import {
-    showSuccessDialog,
-    showErrorDialog,
-  } from "../../../helpers/toolsHelper.js";
+  import { showErrorDialog, showSuccessDialog } from "../../../helpers/toolsHelper.js";
+  import Link from "../../common/components/Link.svelte";
 
-  const { value: name } = useInput("");
-  const { value: email } = useInput("");
-  const { value: password } = useInput("");
+  const { value: name } = useInput();
+  const { value: email } = useInput();
+  const { value: password } = useInput();
+  let busy = $state(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    const result = await register($name, $email, $password);
-
-    if (result.status === "success") {
-      await showSuccessDialog("Akun berhasil dibuat. Silakan masuk.");
+  async function submit(e) {
+    e.preventDefault();
+    busy = true;
+    const r = await register($name, $email, $password);
+    busy = false;
+    if (r.ok) {
+      await showSuccessDialog("Akun dibuat, silakan masuk.");
       navigate("/auth/login");
-    } else {
-      showErrorDialog(result.message);
-    }
+    } else showErrorDialog(r.message);
   }
 </script>
 
-<h2 class="text-xl font-bold mb-4">Daftar</h2>
-
-<form onsubmit={handleSubmit} class="space-y-4">
+<form onsubmit={submit} class="space-y-4">
+  <h2 class="text-xl font-bold text-center">Daftar</h2>
   <div>
-    <label for="name" class="block text-sm font-medium mb-1">Nama</label>
-    <input
-      id="name"
-      type="text"
-      required
-      bind:value={$name}
-      class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    />
+    <label for="register-name-input" class="block text-sm font-medium text-slate-700 mb-1">Nama</label>
+    <input id="register-name-input" name="name" autocomplete="name" placeholder="Nama" required bind:value={$name} class="w-full border rounded-lg px-3 py-2" />
   </div>
-
   <div>
-    <label for="email" class="block text-sm font-medium mb-1">Email</label>
-    <input
-      id="email"
-      type="email"
-      required
-      bind:value={$email}
-      class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    />
+    <label for="register-email-input" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+    <input id="register-email-input" name="email" type="email" autocomplete="email" placeholder="Email" required bind:value={$email} class="w-full border rounded-lg px-3 py-2" />
   </div>
-
   <div>
-    <label for="password" class="block text-sm font-medium mb-1">Kata Sandi</label>
-    <input
-      id="password"
-      type="password"
-      required
-      bind:value={$password}
-      class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    />
+    <label for="register-password-input" class="block text-sm font-medium text-slate-700 mb-1">Kata sandi</label>
+    <input id="register-password-input" name="password" type="password" autocomplete="new-password" placeholder="Kata sandi" required bind:value={$password} class="w-full border rounded-lg px-3 py-2" />
   </div>
-
-  <button
-    type="submit"
-    disabled={$authLoading}
-    class="w-full rounded-lg bg-indigo-600 text-white font-semibold py-2 hover:bg-indigo-700 disabled:opacity-60"
-  >
-    {$authLoading ? "Memproses..." : "Daftar"}
+  <button id="register-submit-button" type="submit" disabled={busy} class="w-full bg-indigo-600 text-white rounded-lg py-2 font-semibold">
+    {busy ? "Memproses..." : "Daftar"}
   </button>
+  <p class="text-sm text-center">Sudah punya akun? <Link href="/auth/login" class="text-indigo-600 font-semibold">Masuk</Link></p>
 </form>
-
-<p class="text-sm text-slate-500 text-center mt-4">
-  Sudah punya akun?
-  <button
-    type="button"
-    onclick={() => navigate("/auth/login")}
-    class="text-indigo-600 font-semibold"
-  >
-    Masuk
-  </button>
-</p>

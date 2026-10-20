@@ -1,74 +1,33 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { it, expect, vi } from "vitest";
+vi.mock("../../../helpers/apiHelper.js", () => ({ apiFetch: vi.fn().mockResolvedValue({ ok: true }) }));
+import { apiFetch } from "../../../helpers/apiHelper.js";
 import * as api from "./linkTreeApi.js";
-import { apiRequest } from "../../../helpers/apiHelper.js";
 
-vi.mock("../../../helpers/apiHelper.js", () => ({ apiRequest: vi.fn() }));
-
-const data = { title: "T", type: "public", description: "D" };
-const item = { title: "I", url: "http://i.id" };
-const form = new FormData();
-
-describe("linkTreeApi", () => {
-  beforeEach(() => apiRequest.mockReset());
-
-  it("GET daftar dan detail", () => {
-    api.getLinkTreesRequest();
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees");
-
-    api.getLinkTreeRequest(7);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7");
-  });
-
-  it("POST dan PUT link tree mengirim title, type, description", () => {
-    api.createLinkTreeRequest(data);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees", {
-      method: "POST",
-      body: data,
-    });
-
-    api.updateLinkTreeRequest(7, data);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7", {
-      method: "PUT",
-      body: data,
-    });
-  });
-
-  it("POST cover mengirim FormData", () => {
-    api.updateCoverRequest(7, form);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7/cover", {
-      method: "POST",
-      body: form,
-    });
-  });
-
-  it("DELETE satu dan semua link tree", () => {
-    api.deleteLinkTreeRequest(7);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7", {
-      method: "DELETE",
-    });
-
-    api.deleteAllLinkTreesRequest();
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees", {
-      method: "DELETE",
-    });
-  });
-
-  it("item: POST, PUT, DELETE", () => {
-    api.createItemRequest(7, item);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7/items", {
-      method: "POST",
-      body: item,
-    });
-
-    api.updateItemRequest(7, 3, item);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7/items/3", {
-      method: "PUT",
-      body: item,
-    });
-
-    api.deleteItemRequest(7, 3);
-    expect(apiRequest).toHaveBeenLastCalledWith("/link-trees/7/items/3", {
-      method: "DELETE",
-    });
-  });
+it("endpoint link tree", async () => {
+  await api.getLinkTreesApi();
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees");
+  await api.getLinkTreeApi(1);
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees/1");
+  await api.addLinkTreeApi({ a: 1 });
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees", { method: "POST", body: { a: 1 } });
+  await api.updateLinkTreeApi(1, { a: 2 });
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees/1", { method: "PUT", body: { a: 2 } });
+  await api.deleteLinkTreeApi(1);
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees/1", { method: "DELETE" });
+  await api.deleteAllLinkTreesApi();
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees", { method: "DELETE" });
+});
+it("endpoint item", async () => {
+  await api.addItemApi(1, { t: 1 });
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees/1/items", { method: "POST", body: { t: 1 } });
+  await api.updateItemApi(1, 2, { t: 2 });
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees/1/items/2", { method: "PUT", body: { t: 2 } });
+  await api.deleteItemApi(1, 2);
+  expect(apiFetch).toHaveBeenLastCalledWith("/link-trees/1/items/2", { method: "DELETE" });
+});
+it("updateCoverApi mengirim FormData", async () => {
+  await api.updateCoverApi(1, new File(["x"], "c.png"));
+  const [path, opt] = apiFetch.mock.calls.at(-1);
+  expect(path).toBe("/link-trees/1/cover");
+  expect(opt.form.get("cover").name).toBe("c.png");
 });

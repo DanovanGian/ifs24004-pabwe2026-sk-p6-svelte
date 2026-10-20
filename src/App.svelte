@@ -1,6 +1,7 @@
 <script>
+  import { onMount } from "svelte";
   import { currentPath, resolveRoute, navigate } from "./router.js";
-  import { isAuthenticated } from "./features/auth/states/authStore.js";
+  import { profile, loadProfile } from "./features/auth/states/authStore.js";
   import AuthLayout from "./features/auth/layouts/AuthLayout.svelte";
   import LoginPage from "./features/auth/pages/LoginPage.svelte";
   import RegisterPage from "./features/auth/pages/RegisterPage.svelte";
@@ -11,40 +12,31 @@
   import ProfilePage from "./features/users/pages/ProfilePage.svelte";
   import NotFoundPage from "./features/common/pages/NotFoundPage.svelte";
 
-  const layouts = { auth: AuthLayout, app: LinkTreeLayout };
   const pages = {
-    login: LoginPage,
-    register: RegisterPage,
-    home: HomePage,
-    detail: DetailPage,
-    users: UsersPage,
-    profile: ProfilePage,
-    notfound: NotFoundPage,
+    login: LoginPage, register: RegisterPage, home: HomePage, detail: DetailPage,
+    users: UsersPage, profile: ProfilePage, notfound: NotFoundPage,
   };
 
+  let ready = $state(false);
   const route = $derived(resolveRoute($currentPath));
-  const Layout = $derived(layouts[route.layout]);
-  const Page = $derived(pages[route.page]);
+  const Page = $derived(pages[route.name]);
 
-  const redirectTo = $derived(
-    route.layout === "app" && !$isAuthenticated
-      ? "/auth/login"
-      : route.layout === "auth" && $isAuthenticated
-        ? "/"
-        : null
-  );
+  onMount(async () => {
+    await loadProfile();
+    ready = true;
+  });
 
   $effect(() => {
-    if (redirectTo) navigate(redirectTo, { replace: true });
+    if (!ready) return;
+    if (route.layout === "app" && !$profile) navigate("/auth/login", { replace: true });
+    else if (route.layout === "auth" && $profile) navigate("/", { replace: true });
   });
 </script>
 
-{#if !redirectTo}
-  {#if Layout}
-    <Layout>
-      <Page params={route.params} />
-    </Layout>
-  {:else}
-    <Page />
-  {/if}
+{#if !ready}
+  <main><h1 class="py-20 text-center text-base font-normal text-slate-600">Memuat...</h1></main>
+{:else if route.layout === "auth" && !$profile}
+  <AuthLayout><Page /></AuthLayout>
+{:else if route.layout === "app" && $profile}
+  <LinkTreeLayout><Page params={route.params} /></LinkTreeLayout>
 {/if}

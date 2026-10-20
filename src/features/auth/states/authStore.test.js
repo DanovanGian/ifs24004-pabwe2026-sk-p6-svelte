@@ -1,81 +1,62 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { get } from "svelte/store";
-import {
-  authToken,
-  isAuthenticated,
-  authLoading,
-  login,
-  register,
-  logout,
-} from "./authStore.js";
-import { loginRequest, registerRequest } from "../api/authApi.js";
-import { getAccessToken } from "../../../helpers/apiHelper.js";
+vi.mock("../api/authApi.js", () => ({ loginApi: vi.fn(), registerApi: vi.fn() }));
+vi.mock("../../users/api/userApi.js", () => ({ getMeApi: vi.fn() }));
+import { loginApi, registerApi } from "../api/authApi.js";
+import { getMeApi } from "../../users/api/userApi.js";
+import { getAccessToken, putAccessToken } from "../../../helpers/apiHelper.js";
+import { currentPath } from "../../../router.js";
+import { profile, isAuthenticated, loadProfile, login, register, logout } from "./authStore.js";
 
-vi.mock("../api/authApi.js", () => ({
-  loginRequest: vi.fn(),
-  registerRequest: vi.fn(),
-}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+  profile.set(null);
+});
 
 describe("authStore", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    authToken.set(null);
-    loginRequest.mockReset();
-    registerRequest.mockReset();
+  it("loadProfile tanpa token", async () => {
+    expect(await loadProfile()).toBeNull();
+    expect(getMeApi).not.toHaveBeenCalled();
   });
-
-  it("login sukses menyimpan token", async () => {
-    loginRequest.mockResolvedValue({ status: "success", data: { token: "t1" } });
-
-    const result = await login("a@b.c", "123");
-
-    expect(result.status).toBe("success");
-    expect(getAccessToken()).toBe("t1");
-    expect(get(authToken)).toBe("t1");
+  it("loadProfile gagal menghapus token", async () => {
+    putAccessToken("t");
+    getMeApi.mockResolvedValue({ ok: false });
+    expect(await loadProfile()).toBeNull();
+    expect(getAccessToken()).toBeNull();
+  });
+  it("loadProfile sukses", async () => {
+    putAccessToken("t");
+    getMeApi.mockResolvedValue({ ok: true, data: { user: { id: 1 } } });
+    expect(await loadProfile()).toEqual({ id: 1 });
+    expect(get(profile)).toEqual({ id: 1 });
     expect(get(isAuthenticated)).toBe(true);
-    expect(get(authLoading)).toBe(false);
   });
-
-  it("login gagal tidak menyimpan token", async () => {
-    loginRequest.mockResolvedValue({ status: "fail", message: "salah" });
-
-    const result = await login("a@b.c", "x");
-
-    expect(result.message).toBe("salah");
+  it("login sukses menyimpan token & memuat profil", async () => {
+    loginApi.mockResolvedValue({ ok: true, data: { token: "abc" } });
+    getMeApi.mockResolvedValue({ ok: true, data: { user: { id: 2 } } });
+    const r = await login("e", "p");
+    expect(r.ok).toBe(true);
+    expect(getAccessToken()).toBe("abc");
+    expect(get(profile)).toEqual({ id: 2 });
+  });
+  it("login gagal", async () => {
+    loginApi.mockResolvedValue({ ok: false, message: "salah" });
+    const r = await login("e", "p");
+    expect(r.ok).toBe(false);
     expect(getAccessToken()).toBeNull();
-    expect(get(isAuthenticated)).toBe(false);
-    expect(get(authLoading)).toBe(false);
   });
-
-  it("authLoading bernilai true selama login berjalan", async () => {
-    let resolveFn;
-    loginRequest.mockReturnValue(new Promise((r) => (resolveFn = r)));
-
-    const pending = login("a@b.c", "123");
-    expect(get(authLoading)).toBe(true);
-
-    resolveFn({ status: "fail" });
-    await pending;
-    expect(get(authLoading)).toBe(false);
+  it("register", async () => {
+    registerApi.mockResolvedValue({ ok: true });
+    expect((await register("n", "e", "p")).ok).toBe(true);
+    expect(registerApi).toHaveBeenCalledWith("n", "e", "p");
   });
-
-  it("register meneruskan hasil API dan mematikan loading", async () => {
-    registerRequest.mockResolvedValue({ status: "success" });
-
-    const result = await register("Gian", "a@b.c", "123");
-
-    expect(registerRequest).toHaveBeenCalledWith("Gian", "a@b.c", "123");
-    expect(result.status).toBe("success");
-    expect(get(authLoading)).toBe(false);
-  });
-
-  it("logout menghapus token", () => {
-    localStorage.setItem("access_token", "t1");
-    authToken.set("t1");
-
+  it("logout", () => {
+    putAccessToken("t");
+    profile.set({ id: 1 });
     logout();
-
     expect(getAccessToken()).toBeNull();
-    expect(get(authToken)).toBeNull();
+    expect(get(profile)).toBeNull();
+    expect(get(currentPath)).toBe("/auth/login");
   });
 });
